@@ -253,7 +253,6 @@ void NetworkClient::disconnect(uv_errno_t ec, std::unique_lock<std::mutex> &lock
                 std::unique_lock<std::mutex> lock(self->m_mutex);
                 self->flush_send_queue(lock);
             });
-            lock.lock();
         } else {
             flush_send_queue(lock);
         }
@@ -282,6 +281,8 @@ void NetworkClient::handle_disconnect(uv_errno_t ec, std::unique_lock<std::mutex
     } else {
         m_handler->receive_disconnect(uvw::ErrorEvent{(int)ec});
     }
+
+    lock.lock();
 }
 
 void NetworkClient::flush_send_queue(std::unique_lock<std::mutex> &lock)
@@ -305,6 +306,8 @@ void NetworkClient::flush_send_queue(std::unique_lock<std::mutex> &lock)
         assert(m_total_queue_size == 0);
         return;
     }
+
+    auto socket = m_socket;
 
     // Figure out how big of a send buffer we need
     size_t buffer_size = 0;
@@ -343,7 +346,9 @@ void NetworkClient::flush_send_queue(std::unique_lock<std::mutex> &lock)
 
     // Bombs away!
     m_is_sending = true;
-    m_socket->write(m_send_buf, buffer_size);
+    lock.unlock();
+    socket->write(m_send_buf, buffer_size);
+    lock.lock();
 }
 
 void NetworkClient::send_finished()
